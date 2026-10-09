@@ -8,13 +8,30 @@ shows who to go where, and customers can get SMS alerts as their turn approaches
 
 | Path | Who uses it | What it does |
 |------|-------------|--------------|
+| `/` or `/login` | Staff | AfriQueue sign-in page. **Admin** goes to Setup, **User** goes to the counter panel |
 | `/kiosk` | Customers | Pick a service, optionally enter a phone number, get a ticket (e.g. `A007`) |
-| `/counter` | Staff | Choose the counter, then **Call next**, Recall, Start serving, Skip (no-show), Complete |
+| `/counter` | Staff (signed in) | Choose the counter, then **Call next**, Recall, Start serving, Skip (no-show), Complete |
 | `/display` | Waiting-area TV | Live board of each counter's current ticket, recent calls and waiting counts; flashes, chimes and announces each call (click **Enable sound** once) |
-| `/admin` | Manager | Add services (with ticket prefix) and counters |
+| `/admin` | Admins (signed in) | Add services, counters and staff accounts; links to every screen |
+| `/portal` | Patients | Enter a ticket number (e.g. `A007`) to follow it live |
 | `/ticket/:id` | Customers | Live status of one ticket |
 
 Updates are pushed to every screen in real time over Socket.IO.
+The kiosk, display, portal and ticket pages are public; the counter panel and
+setup require signing in.
+
+## Sign-in and accounts
+
+- On first start the server creates an admin account. Set `ADMIN_USERNAME` /
+  `ADMIN_PASSWORD` to choose it; otherwise a random password is printed once in
+  the server log. Change it after signing in (**Change password** in the top bar).
+- Admins add staff accounts on the Setup page, with role *Staff / Healthcare
+  Provider* or *Administrator*.
+- Choosing **Admin** on the login page only works for administrator accounts.
+  Administrators can also sign in as **User** to go straight to the counter.
+- Passwords are hashed with scrypt; sessions are httpOnly cookies. **Remember me**
+  keeps you signed in for 30 days, otherwise until the browser closes (max 12 hours).
+- Sign-in is limited to 10 failed attempts per 15 minutes per IP address.
 
 ## SMS notifications
 
@@ -67,6 +84,8 @@ On Railway (or any Node host): build command `npm run build`, start command
 | `PORT` | `4000` | HTTP port |
 | `DATABASE_PATH` | `server/data/queuems.db` | SQLite file |
 | `ORG_NAME` | `QueueMS` | Name shown in SMS messages |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | `admin`, random | First admin account |
+| `NODE_ENV` | – | Set to `production` so session cookies are HTTPS-only |
 | `AT_USERNAME`, `AT_API_KEY` | – | Africa's Talking credentials |
 | `AT_SENDER_ID` | – | Optional registered sender ID |
 | `SMS_COUNTRY_CODE` | `254` | Used to convert local numbers |
@@ -76,19 +95,24 @@ On Railway (or any Node host): build command `npm run build`, start command
 
 | Method | Path | Body |
 |--------|------|------|
+| POST | `/api/auth/login` | `{ username, password, role, rememberMe }` |
+| POST | `/api/auth/logout` · GET `/api/auth/me` | – |
+| POST | `/api/auth/password` | `{ currentPassword, newPassword }` |
+| GET/POST | `/api/users` (admin) | `{ username, full_name, password, role }` |
 | GET | `/api/queue` | – full live snapshot |
-| GET/POST | `/api/services` | `{ name, prefix }` |
-| GET/POST | `/api/counters` | `{ name }` |
+| GET/POST | `/api/services` (POST: admin) | `{ name, prefix }` |
+| GET/POST | `/api/counters` (POST: admin) | `{ name }` |
 | POST | `/api/tickets` | `{ serviceId, phone? }` |
-| GET | `/api/tickets/:id` | – |
-| POST | `/api/counters/:id/call-next` | `{ serviceIds? }` |
-| POST | `/api/tickets/:id/recall` \| `serve` \| `skip` \| `complete` | – |
+| GET | `/api/tickets/:id` · `/api/tickets/lookup?code=A007` | – |
+| POST | `/api/counters/:id/call-next` (staff) | `{ serviceIds? }` |
+| POST | `/api/tickets/:id/recall` \| `serve` \| `skip` \| `complete` (staff) | – |
 
 Ticket numbers restart at 001 for each service every day.
 
 ## Next ideas
 
-- Staff login and roles
+- QR code sign-in (button is on the login page, not connected yet)
+- Admin password reset for staff accounts
 - Reports: average wait and service time per service and counter
 - Printed tickets with a QR code linking to `/ticket/:id`
 - Priority tickets (elderly, disabled, VIP)

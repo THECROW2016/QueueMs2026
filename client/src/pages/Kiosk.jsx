@@ -48,7 +48,7 @@ export default function Kiosk() {
         <p className="lead">{ticket.service_name}</p>
         <p>
           {ticket.ahead === 0 ? 'You are next.' : `${ticket.ahead} ahead of you.`}
-          {ticket.phone && ' We will text you when your turn is near.'}
+          {ticket.has_phone && ' We will text you when your turn is near.'}
         </p>
         <button className="btn" onClick={reset}>Done</button>
       </main>

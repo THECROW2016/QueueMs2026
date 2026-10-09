@@ -62,7 +62,7 @@ export default function Display() {
   return (
     <main className="display">
       <header className="row between">
-        <h1 className="brand">Queue<span>MS</span></h1>
+        <h1 className="qms-brand">Queue<span>MS</span></h1>
         <div className="row">
           {!soundOn && (
             <button className="btn ghost" onClick={() => setSoundOn(true)}>Enable sound</button>

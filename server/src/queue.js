@@ -74,6 +74,18 @@ export function getTicket(id) {
   return { ...t, ahead };
 }
 
+/** Find today's ticket by its printed code, e.g. "A007". */
+export function findTicketByCode(code) {
+  const row = db
+    .prepare(
+      `SELECT id FROM tickets WHERE code = ? AND date(created_at) = date('now')
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(String(code || '').trim().toUpperCase());
+  if (!row) throw new HttpError(404, 'No ticket with that number today.');
+  return getTicket(row.id);
+}
+
 export function issueTicket({ serviceId, phone }) {
   const service = q.service.get(serviceId);
   if (!service || !service.active) throw new HttpError(404, 'Service not found');

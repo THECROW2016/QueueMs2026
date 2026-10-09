@@ -45,8 +45,8 @@ input {
 .between { justify-content: space-between; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 1.25rem; margin: 1rem 0; }
 
-.brand { font-family: var(--mono); font-weight: 800; letter-spacing: -.02em; }
-.brand span { color: var(--accent); }
+.qms-brand { font-family: var(--mono); font-weight: 800; letter-spacing: -.02em; }
+.qms-brand span { color: var(--accent); }
 
 .btn {
   font: inherit; font-weight: 500; padding: .7rem 1.1rem; border-radius: 10px;
@@ -113,3 +113,10 @@ input {
   .display-body { grid-template-columns: 1fr; }
   .display { padding: 1rem 16px; }
 }
+
+.staff-bar { border-bottom: 1px solid var(--line); padding-bottom: .75rem; margin-bottom: 1.5rem; }
+.staff-bar .btn { padding: .45rem .8rem; font-size: .9rem; }
+.password-form { margin-top: .75rem; }
+.password-form input { width: auto; flex: 1 1 200px; margin: 0; }
+.portal-form { width: min(420px, 100%); }
+.check input[type='radio'] { width: auto; margin: 0; }

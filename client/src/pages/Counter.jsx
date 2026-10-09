@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, useQueue } from '../api.js';
+import { StaffBar } from '../auth.jsx';
 
 const load = (key, fallback) => {
   try {
@@ -32,6 +33,7 @@ export default function Counter() {
   if (!counter) {
     return (
       <main className="page">
+        <StaffBar />
         <h1>Which counter is this?</h1>
         <div className="service-grid">
           {queue.counters.map((c) => (
@@ -68,6 +70,7 @@ export default function Counter() {
 
   return (
     <main className="page counter">
+      <StaffBar />
       <header className="row between">
         <h1>{counter.name}</h1>
         <button className="btn ghost" onClick={() => setCounterId(null)}>Switch counter</button>
