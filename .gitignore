@@ -11,3 +11,5 @@ server/data/
 *.db
 playwright-report/
 test-results/
+test-results/
+playwright-report/
