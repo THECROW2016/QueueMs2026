@@ -1,0 +1,16 @@
+{
+  "name": "queuems",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Queue management system: ticket kiosk, counter panel, live display and SMS alerts",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "build": "npm run install:all && npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
