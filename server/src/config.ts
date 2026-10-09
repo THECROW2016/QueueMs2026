@@ -27,6 +27,8 @@ const schema = z.object({
   // sequences and report date ranges.
   HOSPITAL_UTC_OFFSET_MINUTES: z.coerce.number().int().default(180),
 
+  // Interactive API documentation at /api/docs. Off by default in production.
+  API_DOCS: z.preprocess((v) => (v === undefined || v === '' ? undefined : ['1', 'true', 'yes'].includes(String(v).toLowerCase())), z.boolean().optional()),
   OUTBOX_POLL_MS: z.coerce.number().int().positive().default(400),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(2555),
 });

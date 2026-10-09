@@ -95,6 +95,15 @@ export async function resolveSession(token: string) {
   return { user, session: { id, csrfToken: s.csrfToken } };
 }
 
+/** Like resolveSession but read-only: it never slides the idle timeout (used to re-check long-lived sockets). */
+export async function peekSession(token: string) {
+  const s = await prisma.session.findUnique({ where: { id: sha256(token) } });
+  const now = new Date();
+  if (!s || s.idleExpiresAt < now || s.absoluteExpiresAt < now) return null;
+  const user = await loadAuthUser(s.userId);
+  return user ? { user, sessionId: s.id } : null;
+}
+
 export async function logout(token: string, userId: number, req?: Request) {
   await prisma.session.deleteMany({ where: { id: sha256(token) } });
   await audit({ userId, action: 'LOGOUT', entityType: 'User', entityId: userId, req });

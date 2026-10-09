@@ -11,6 +11,9 @@ import { errorHandler, notFoundHandler, requestId } from './middleware/error.js'
 import { adminRoutes } from './routes/admin.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { apiRouter } from './routes/index.js';
+import { publicRoutes } from './routes/public.routes.js';
+import swaggerUi from 'swagger-ui-express';
+import { buildOpenApi } from './openapi.js';
 import { ah } from './utils/misc.js';
 
 export function createApp(): Express {
@@ -50,7 +53,14 @@ export function createApp(): Express {
     }
   }));
 
+  if (config.API_DOCS ?? !config.isProd) {
+    const spec = buildOpenApi();
+    app.get('/api/openapi.json', (_req, res) => void res.json(spec));
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec, { customSiteTitle: 'HQMS API' }));
+  }
+
   app.use('/api', sessionLoader, csrfProtection);
+  app.use('/api', publicRoutes); // unauthenticated, PII-free
   app.use('/api/auth', authRoutes);
   app.use('/api', adminRoutes);
   app.use('/api', apiRouter);
