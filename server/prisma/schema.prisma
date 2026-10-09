@@ -1,0 +1,501 @@
+// Hospital Queue Management System (HQMS) - MySQL schema.
+// JSON-like payloads are stored as text (parsed in the service layer) so the
+// schema behaves identically on MySQL and MariaDB.
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/* ------------------------------------------------------------------ */
+/* Identity and access                                                 */
+/* ------------------------------------------------------------------ */
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  username           String    @unique @db.VarChar(100)
+  email              String?   @unique @db.VarChar(190)
+  fullName           String    @db.VarChar(190)
+  passwordHash       String    @db.VarChar(255)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime? @db.DateTime(3)
+  lastLoginAt        DateTime? @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @db.DateTime(3)
+
+  roles       UserRole[]
+  departments UserDepartmentAssignment[]
+  sessions    Session[]
+  resetTokens PasswordResetToken[]
+  reads       NotificationRead[]
+  auditLogs   AuditLog[]
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique @db.VarChar(80)
+  description String? @db.VarChar(255)
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+}
+
+model UserDepartmentAssignment {
+  userId       Int
+  departmentId Int
+  createdAt    DateTime   @default(now()) @db.DateTime(3)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@id([userId, departmentId])
+  @@index([departmentId])
+}
+
+model Session {
+  id               String   @id @db.Char(64) // SHA-256 of the cookie token
+  userId           Int
+  csrfToken        String   @db.VarChar(64)
+  ipAddress        String?  @db.VarChar(64)
+  userAgent        String?  @db.VarChar(255)
+  createdAt        DateTime @default(now()) @db.DateTime(3)
+  lastSeenAt       DateTime @default(now()) @db.DateTime(3)
+  idleExpiresAt    DateTime @db.DateTime(3)
+  absoluteExpiresAt DateTime @db.DateTime(3)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([idleExpiresAt])
+}
+
+model PasswordResetToken {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  tokenHash   String    @unique @db.Char(64)
+  expiresAt   DateTime  @db.DateTime(3)
+  usedAt      DateTime? @db.DateTime(3)
+  createdById Int?
+  createdAt   DateTime  @default(now()) @db.DateTime(3)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/* ------------------------------------------------------------------ */
+/* Hospital structure                                                  */
+/* ------------------------------------------------------------------ */
+
+model Department {
+  id             Int      @id @default(autoincrement())
+  code           String   @unique @db.VarChar(30)
+  name           String   @db.VarChar(100)
+  ticketPrefix   String   @db.VarChar(8)
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  // Clinical departments can create clinical referrals and see referral notes.
+  isClinical     Boolean  @default(false)
+  // Policy for ticket numbering: DAILY (reset every day) or CONTINUOUS.
+  sequencePolicy SequencePolicy @default(DAILY)
+  // JSON array of workflow stage codes for this department.
+  workflowStages String   @db.Text
+  // JSON array of configurable service types (e.g. X-RAY, ULTRASOUND, CT).
+  serviceTypes   String?  @db.Text
+  createdAt      DateTime @default(now()) @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @db.DateTime(3)
+
+  counters      ServiceCounter[]
+  assignments   UserDepartmentAssignment[]
+  tickets       QueueTicket[]
+  sequences     QueueSequence[]
+  rulesFrom     RoutingRule[]    @relation("RuleFrom")
+  rulesTo       RoutingRule[]    @relation("RuleTo")
+  notifications Notification[]
+  referralsTo   ClinicalReferral[] @relation("ReferralTo")
+  referralsFrom ClinicalReferral[] @relation("ReferralFrom")
+  events        JourneyEvent[]
+}
+
+enum SequencePolicy {
+  DAILY
+  CONTINUOUS
+}
+
+model ServiceCounter {
+  id           Int        @id @default(autoincrement())
+  departmentId Int
+  name         String     @db.VarChar(100)
+  kind         String     @default("COUNTER") @db.VarChar(20) // COUNTER | ROOM
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @db.DateTime(3)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  tickets      QueueTicket[]
+
+  @@unique([departmentId, name])
+}
+
+model RoutingRule {
+  id                  Int        @id @default(autoincrement())
+  fromDepartmentId    Int
+  toDepartmentId      Int
+  isActive            Boolean    @default(true)
+  requiresReason      Boolean    @default(false)
+  // Only users holding queue.emergency may use this rule.
+  emergencyOnly       Boolean    @default(false)
+  createdAt           DateTime   @default(now()) @db.DateTime(3)
+  from                Department @relation("RuleFrom", fields: [fromDepartmentId], references: [id], onDelete: Cascade)
+  to                  Department @relation("RuleTo", fields: [toDepartmentId], references: [id], onDelete: Cascade)
+
+  @@unique([fromDepartmentId, toDepartmentId])
+}
+
+/* ------------------------------------------------------------------ */
+/* Patients and visits                                                 */
+/* ------------------------------------------------------------------ */
+
+enum Sex {
+  FEMALE
+  MALE
+  OTHER
+  UNKNOWN
+}
+
+model Patient {
+  id          Int      @id @default(autoincrement())
+  mrn         String   @unique @db.VarChar(40)
+  fullName    String   @db.VarChar(190)
+  // Lower-cased, whitespace-normalised name used for duplicate detection.
+  nameKey     String   @db.VarChar(190)
+  dateOfBirth DateTime? @db.Date
+  sex         Sex      @default(UNKNOWN)
+  phone       String?  @db.VarChar(30)
+  nationalId  String?  @db.VarChar(40)
+  address     String?  @db.VarChar(255)
+  isTest      Boolean  @default(false)
+  createdById Int?
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @db.DateTime(3)
+
+  visits Visit[]
+
+  @@index([nameKey])
+  @@index([phone])
+  @@index([nationalId])
+  @@index([createdAt])
+}
+
+enum VisitStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Visit {
+  id              Int         @id @default(autoincrement())
+  visitNumber     String      @unique @db.VarChar(40)
+  patientId       Int
+  status          VisitStatus @default(ACTIVE)
+  isEmergency     Boolean     @default(false)
+  isTest          Boolean     @default(false)
+  // Client-generated key that makes visit creation safe to retry / double-submit.
+  idempotencyKey  String?     @unique @db.VarChar(80)
+  reasonForVisit  String?     @db.VarChar(255)
+  billingClearedAt DateTime?  @db.DateTime(3)
+  closedAt        DateTime?   @db.DateTime(3)
+  closedById      Int?
+  closureReason   String?     @db.VarChar(255)
+  createdById     Int?
+  openedAt        DateTime    @default(now()) @db.DateTime(3)
+  updatedAt       DateTime    @updatedAt @db.DateTime(3)
+
+  patient   Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  tickets   QueueTicket[]
+  events    JourneyEvent[]
+  referrals ClinicalReferral[]
+  invoices  Invoice[]
+
+  @@index([patientId, openedAt])
+  @@index([status, openedAt])
+  @@index([openedAt])
+}
+
+/* ------------------------------------------------------------------ */
+/* Queue                                                               */
+/* ------------------------------------------------------------------ */
+
+model QueueSequence {
+  departmentId Int
+  scopeKey     String     @db.VarChar(20) // YYYY-MM-DD for DAILY, "ALL" for CONTINUOUS
+  lastNumber   Int        @default(0)
+  updatedAt    DateTime   @updatedAt @db.DateTime(3)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([departmentId, scopeKey])
+}
+
+enum TicketStatus {
+  WAITING
+  CALLED
+  IN_SERVICE
+  ON_HOLD
+  ABSENT
+  COMPLETED
+  REFERRED
+  SKIPPED
+  CANCELLED
+}
+
+enum ResultStatus {
+  NOT_APPLICABLE
+  PENDING
+  AVAILABLE
+}
+
+model QueueTicket {
+  id             Int          @id @default(autoincrement())
+  visitId        Int
+  departmentId   Int
+  scopeKey       String       @db.VarChar(20)
+  ticketNumber   Int
+  displayNumber  String       @db.VarChar(20)
+  status         TicketStatus @default(WAITING)
+  // 0 = routine, 1 = urgent, 2 = emergency. Only clinical staff may raise it.
+  priority       Int          @default(0)
+  priorityReason String?      @db.VarChar(255)
+  serviceType    String?      @db.VarChar(60)
+  workflowStage  String?      @db.VarChar(60)
+  resultStatus   ResultStatus @default(NOT_APPLICABLE)
+  counterId      Int?
+  referralId     Int?
+  parentTicketId Int?
+  idempotencyKey String?      @unique @db.VarChar(80)
+  callCount      Int          @default(0)
+  statusReason   String?      @db.VarChar(255)
+  enteredAt      DateTime     @default(now()) @db.DateTime(3)
+  firstCalledAt  DateTime?    @db.DateTime(3)
+  lastCalledAt   DateTime?    @db.DateTime(3)
+  serviceStartedAt DateTime?  @db.DateTime(3)
+  completedAt    DateTime?    @db.DateTime(3)
+  calledById     Int?
+  servedById     Int?
+  createdById    Int?
+  version        Int          @default(0)
+  updatedAt      DateTime     @updatedAt @db.DateTime(3)
+
+  visit      Visit          @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  department Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  counter    ServiceCounter? @relation(fields: [counterId], references: [id], onDelete: SetNull)
+  events     JourneyEvent[]
+
+  @@unique([departmentId, scopeKey, ticketNumber])
+  @@index([departmentId, status, priority, enteredAt, id])
+  @@index([visitId])
+  @@index([status, lastCalledAt])
+  @@index([enteredAt])
+}
+
+/// One row per significant change. Doubles as the ticket history and the patient journey.
+model JourneyEvent {
+  id           Int      @id @default(autoincrement())
+  visitId      Int
+  ticketId     Int?
+  departmentId Int?
+  eventType    String   @db.VarChar(40)
+  fromStatus   String?  @db.VarChar(30)
+  toStatus     String?  @db.VarChar(30)
+  userId       Int?
+  reason       String?  @db.VarChar(255)
+  metadata     String?  @db.Text
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+
+  visit      Visit        @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  ticket     QueueTicket? @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@index([visitId, createdAt])
+  @@index([ticketId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+enum ReferralStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ClinicalReferral {
+  id               Int            @id @default(autoincrement())
+  visitId          Int
+  fromTicketId     Int?
+  fromDepartmentId Int
+  toDepartmentId   Int
+  serviceType      String?        @db.VarChar(60)
+  priority         Int            @default(0)
+  // Clinical notes are only visible to users with referral.notes.view.
+  notes            String?        @db.Text
+  status           ReferralStatus @default(PENDING)
+  createdById      Int?
+  createdAt        DateTime       @default(now()) @db.DateTime(3)
+  completedAt      DateTime?      @db.DateTime(3)
+
+  visit          Visit      @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  fromDepartment Department @relation("ReferralFrom", fields: [fromDepartmentId], references: [id], onDelete: Restrict)
+  toDepartment   Department @relation("ReferralTo", fields: [toDepartmentId], references: [id], onDelete: Restrict)
+
+  @@index([visitId])
+  @@index([toDepartmentId, status])
+}
+
+/* ------------------------------------------------------------------ */
+/* Billing                                                             */
+/* ------------------------------------------------------------------ */
+
+enum InvoiceStatus {
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+model Invoice {
+  id            Int           @id @default(autoincrement())
+  invoiceNumber String        @unique @db.VarChar(40)
+  visitId       Int
+  description   String?       @db.VarChar(255)
+  // Amounts are stored in minor units (e.g. cents) to avoid floating point errors.
+  totalMinor    Int
+  paidMinor     Int           @default(0)
+  currency      String        @default("KES") @db.VarChar(3)
+  status        InvoiceStatus @default(ISSUED)
+  createdById   Int?
+  createdAt     DateTime      @default(now()) @db.DateTime(3)
+  updatedAt     DateTime      @updatedAt @db.DateTime(3)
+
+  visit    Visit     @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  payments Payment[]
+
+  @@index([visitId])
+}
+
+model Payment {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  amountMinor    Int
+  method         String   @db.VarChar(30)
+  // Reference from the payment system (e.g. M-Pesa code, card slip, cash receipt book).
+  reference      String?  @db.VarChar(80)
+  receiptNumber  String   @unique @db.VarChar(40)
+  idempotencyKey String?  @unique @db.VarChar(80)
+  confirmedById  Int
+  createdAt      DateTime @default(now()) @db.DateTime(3)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications, outbox, audit, settings                              */
+/* ------------------------------------------------------------------ */
+
+model Notification {
+  id           Int      @id @default(autoincrement())
+  // Unique per logical event, so retries can never create duplicates.
+  eventKey     String   @unique @db.VarChar(120)
+  departmentId Int
+  type         String   @db.VarChar(40)
+  title        String   @db.VarChar(190)
+  body         String?  @db.VarChar(255)
+  ticketId     Int?
+  visitId      Int?
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+
+  department Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  reads      NotificationRead[]
+
+  @@index([departmentId, createdAt])
+}
+
+model NotificationRead {
+  userId         Int
+  notificationId Int
+  readAt         DateTime     @default(now()) @db.DateTime(3)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, notificationId])
+}
+
+/// Transactional outbox: written in the same transaction as the change, then dispatched to sockets.
+model OutboxEvent {
+  id           Int       @id @default(autoincrement())
+  topic        String    @db.VarChar(40)
+  departmentId Int?
+  payload      String    @db.Text
+  createdAt    DateTime  @default(now()) @db.DateTime(3)
+  dispatchedAt DateTime? @db.DateTime(3)
+  attempts     Int       @default(0)
+
+  @@index([dispatchedAt, id])
+  @@index([topic, id])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String   @db.VarChar(60)
+  entityType String?  @db.VarChar(40)
+  entityId   String?  @db.VarChar(40)
+  ipAddress  String?  @db.VarChar(64)
+  userAgent  String?  @db.VarChar(255)
+  metadata   String?  @db.Text
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+}
+
+model SystemSetting {
+  key         String   @id @db.VarChar(80)
+  value       String   @db.Text
+  updatedById Int?
+  updatedAt   DateTime @updatedAt @db.DateTime(3)
+}
