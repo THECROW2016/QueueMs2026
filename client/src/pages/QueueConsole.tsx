@@ -124,7 +124,7 @@ export default function QueueConsole() {
                   <article key={t.id} className="card p-4" data-testid={`active-${t.displayNumber}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="text-2xl font-extrabold tracking-tight">{t.displayNumber}</div>
+                        <div className="font-display text-3xl font-extrabold tracking-tight">{t.displayNumber}</div>
                         <div className="text-sm text-slate-600">{t.patient ? `${t.patient.fullName} · ${t.patient.mrn}` : t.visitNumber}</div>
                         <div className="text-xs text-slate-500">{t.counter?.name ?? '—'} · {t.status === 'IN_SERVICE' ? `in service ${duration(t.serviceSeconds)}` : `called ${timeOnly(t.lastCalledAt)}`}{t.serviceType ? ` · ${humanize(t.serviceType)}` : ''}</div>
                       </div>

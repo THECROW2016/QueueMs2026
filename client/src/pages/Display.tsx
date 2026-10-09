@@ -124,7 +124,7 @@ export default function Display() {
             <ul className="grid gap-4 sm:grid-cols-2">
               {snap.nowServing.map((c, i) => (
                 <li key={c.ticketId} className={`rounded-2xl border border-white/10 p-5 ${i === 0 ? 'bg-brand-600' : 'bg-ink-800'}`}>
-                  <div className="text-6xl font-extrabold tracking-tight tabular-nums">{c.displayNumber}</div>
+                  <div className="font-display text-6xl font-extrabold tracking-tight tabular-nums">{c.displayNumber}</div>
                   <div className="mt-2 text-2xl font-semibold">{c.counter ?? '—'}</div>
                   <div className="text-lg text-white/70">{c.department}</div>
                 </li>

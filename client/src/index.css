@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply bg-slate-50 text-slate-800 antialiased; font-family: Inter, system-ui, sans-serif; }
-  h1, h2, h3 { @apply tracking-tight; }
+  body { @apply bg-[#f4f7f9] text-ink-900 antialiased font-sans; }
+  h1 { @apply font-display tracking-tight; }
+  h2, h3 { @apply tracking-tight; }
 }
 
 @layer components {
@@ -15,7 +16,7 @@
   .btn-sm { @apply px-2.5 py-1.5 text-xs; }
   .input { @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-slate-100; }
   .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500; }
-  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+  .card { @apply rounded-2xl border border-[#dce6eb] bg-white; }
   .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
   .td { @apply px-3 py-2.5 text-sm; }
   .error-text { @apply mt-1 text-xs text-red-600; }
