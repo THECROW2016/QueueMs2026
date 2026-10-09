@@ -21,6 +21,14 @@ export async function resetOperationalData() {
   }
 }
 
+/** Clears queue/visit/patient data between tests but keeps users and sessions (so signed-in clients stay valid). */
+export async function clearClinicalData() {
+  for (const table of ['NotificationRead', 'Notification', 'OutboxEvent', 'Payment', 'Invoice', 'JourneyEvent', 'ClinicalReferral', 'QueueTicket', 'QueueSequence', 'Visit', 'Patient']) {
+    await prisma.$executeRawUnsafe(`DELETE FROM \`${table}\``);
+  }
+  await prisma.$executeRawUnsafe("DELETE FROM `SystemSetting` WHERE `key` LIKE 'seq.%'");
+}
+
 export async function freshDatabase() {
   await resetOperationalData();
   await seedReferenceData();
@@ -83,4 +91,55 @@ export async function makeStaff() {
     userClient(['ACCOUNTS'], ['ACCOUNTS']),
   ]);
   return { admin, reception, triage, consultation, lab, radiology, pharmacy, accounts };
+}
+
+/* ---------------------------- Workflow helpers ---------------------------- */
+
+let seq = 0;
+export const randomName = () => `Test Patient ${Date.now().toString(36)}${seq++}`;
+
+export async function newVisit(reception: Client, overrides: Record<string, unknown> = {}) {
+  const res = await reception.post('/api/visits', {
+    newPatient: { fullName: randomName(), dateOfBirth: '1990-05-17', sex: 'FEMALE', phone: `07${Math.floor(10000000 + Math.random() * 89999999)}` },
+    idempotencyKey: `key-${Date.now()}-${seq++}-${Math.random().toString(36).slice(2)}`,
+    ...overrides,
+  });
+  if (res.status !== 201 && res.status !== 200) throw new Error(`createVisit failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return { visitId: res.body.visit.id as number, ticketId: res.body.ticket.id as number, display: res.body.ticket.displayNumber as string, patientId: res.body.visit.patientId as number };
+}
+
+export const counterIds = async (code: string) => {
+  const dept = await deptByCode(code);
+  const rows = await prisma.serviceCounter.findMany({ where: { departmentId: dept.id, isActive: true }, orderBy: { id: 'asc' } });
+  return { deptId: dept.id, counters: rows.map((c) => c.id) };
+};
+
+/** Call the next ticket in a department from its first free counter, then start it. */
+export async function callAndStart(client: Client, code: string, counterIndex = 0) {
+  const { deptId, counters } = await counterIds(code);
+  const called = await client.post(`/api/departments/${deptId}/call-next`, { counterId: counters[counterIndex] });
+  if (called.status !== 200 || !called.body.ticket) throw new Error(`call-next failed: ${called.status} ${JSON.stringify(called.body)}`);
+  const id = called.body.ticket.id as number;
+  const started = await client.post(`/api/tickets/${id}/start`);
+  if (started.status !== 200) throw new Error(`start failed: ${started.status} ${JSON.stringify(started.body)}`);
+  return { id, display: called.body.ticket.displayNumber as string };
+}
+
+export const deptId = async (code: string) => (await deptByCode(code)).id;
+
+/** Walk a visit's Reception ticket through to Triage, so tests can start deeper in the flow. */
+export async function toTriage(staff: Awaited<ReturnType<typeof makeStaff>>) {
+  const v = await newVisit(staff.reception);
+  const rec = await callAndStart(staff.reception, 'RECEPTION');
+  const done = await staff.reception.post(`/api/tickets/${rec.id}/complete`, { next: [{ departmentId: await deptId('TRIAGE') }] });
+  if (done.status !== 200) throw new Error(`reception complete failed ${done.status} ${JSON.stringify(done.body)}`);
+  return v;
+}
+
+export async function toConsultation(staff: Awaited<ReturnType<typeof makeStaff>>) {
+  const v = await toTriage(staff);
+  const tri = await callAndStart(staff.triage, 'TRIAGE');
+  const done = await staff.triage.post(`/api/tickets/${tri.id}/complete`, { next: [{ departmentId: await deptId('CONSULTATION') }] });
+  if (done.status !== 200) throw new Error(`triage complete failed ${done.status} ${JSON.stringify(done.body)}`);
+  return v;
 }

@@ -18,7 +18,7 @@ const RETRYABLE = /deadlock|lock wait timeout|write conflict|P2034|1213|1205/i;
  * Runs `fn` in an interactive transaction and retries on deadlocks / lock timeouts.
  * Everything inside `fn` either commits together or not at all.
  */
-export async function transact<T>(fn: (tx: Tx) => Promise<T>, attempts = 4): Promise<T> {
+export async function transact<T>(fn: (tx: Tx) => Promise<T>, attempts = 8): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -27,7 +27,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, attempts = 4): Pro
       lastErr = err;
       const msg = err instanceof Error ? `${err.message} ${(err as { code?: string }).code ?? ''}` : '';
       if (!RETRYABLE.test(msg) || i === attempts - 1) throw err;
-      await new Promise((r) => setTimeout(r, 25 * 2 ** i + Math.random() * 25));
+      await new Promise((r) => setTimeout(r, 20 * 2 ** Math.min(i, 4) + Math.random() * 40));
     }
   }
   throw lastErr;
