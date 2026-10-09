@@ -1,0 +1,88 @@
+# Hospital Queue Management System
+#
+#   cp .env.example .env      # then replace every CHANGE_ME value
+#   docker compose up -d --build
+#   docker compose run --rm app node dist/cli/create-admin.js --username admin --name "Your Name"
+#
+# The database is NOT published to the host: only the app can reach it, over the private "internal" network.
+# For HTTPS use the bundled reverse proxy:  docker compose --profile https up -d   (see docs/DEPLOYMENT.md)
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hqms}
+      MYSQL_USER: ${MYSQL_USER:-hqms}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-time-zone=+00:00"]
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [internal]
+    # No "ports:" on purpose. Never expose 3306 to the internet.
+
+  migrate:
+    build: { context: ., target: migrate }
+    restart: "no"
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-hqms}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-hqms}
+      NODE_ENV: production
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+
+  app:
+    build: { context: ., target: runtime }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: mysql://${MYSQL_USER:-hqms}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-hqms}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      HOSPITAL_UTC_OFFSET_MINUTES: ${HOSPITAL_UTC_OFFSET_MINUTES:-180}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
+      SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-12}
+      API_DOCS: ${API_DOCS:-false}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # Published to the host so the app can be reached directly on a private network or behind your own proxy.
+    # With the "https" profile, remove this mapping so only the proxy is reachable.
+    ports:
+      - "${APP_PORT:-4000}:4000"
+    networks: [internal, web]
+
+  proxy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    environment:
+      HQMS_DOMAIN: ${HQMS_DOMAIN:?Set HQMS_DOMAIN (for example queue.hospital.example) in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+    networks: [web]
+
+networks:
+  internal:
+    internal: true # no outbound or inbound access from outside Docker
+  web: {}
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

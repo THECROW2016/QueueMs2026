@@ -1,0 +1,9 @@
+# Automatic HTTPS (Let's Encrypt) in front of the app. Requires a public DNS name pointing at this server.
+{$HQMS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4000
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

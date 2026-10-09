@@ -1,118 +1,84 @@
-# QueueMS
+# AfriQueue – Hospital Queue Management System (HQMS)
 
-A queue management system for service halls, banks, clinics and offices.
-Customers take a numbered ticket, staff call them to a counter, a TV screen
-shows who to go where, and customers can get SMS alerts as their turn approaches.
+A database-driven queue and patient-flow system for a hospital with seven departments: **Reception, Triage, Consultation, Laboratory, Radiology, Pharmacy and Accounts**. Patients get a ticket at Reception, are called to a counter or room, and move through the departments their care needs. Staff see only what their role allows, a public screen announces ticket numbers (never patient details), and administrators get live and historical reports.
 
-## Screens
+> This repository previously held a simpler queue app. It was replaced on `main` with the owner's approval; the old code is still in git history (commit `4689ebb`).
 
-| Path | Who uses it | What it does |
-|------|-------------|--------------|
-| `/` or `/login` | Staff | AfriQueue sign-in page. **Admin** goes to Setup, **User** goes to the counter panel |
-| `/kiosk` | Customers | Pick a service, optionally enter a phone number, get a ticket (e.g. `A007`) |
-| `/counter` | Staff (signed in) | Choose the counter, then **Call next**, Recall, Start serving, Skip (no-show), Complete |
-| `/display` | Waiting-area TV | Live board of each counter's current ticket, recent calls and waiting counts; flashes, chimes and announces each call (click **Enable sound** once) |
-| `/admin` | Admins (signed in) | Add services, counters and staff accounts; links to every screen |
-| `/portal` | Patients | Enter a ticket number (e.g. `A007`) to follow it live |
-| `/ticket/:id` | Customers | Live status of one ticket |
+## What is in the box
 
-Updates are pushed to every screen in real time over Socket.IO.
-The kiosk, display, portal and ticket pages are public; the counter panel and
-setup require signing in.
+| Area | Details |
+|---|---|
+| Stack | React 18 + TypeScript + Vite + Tailwind + React Router + React Hook Form + Zod · Node 22 + Express + TypeScript · Socket.IO · MySQL 8 via Prisma |
+| Security | Argon2id passwords · server-side sessions (HttpOnly cookie, hashed token in the database) · CSRF protection · login rate limit + account lockout · RBAC enforced on the server with department scoping · audit log · Helmet/CSP |
+| Queue engine | Concurrency-safe ticket numbers · call-next that never gives one ticket to two callers · state machine (waiting → called → in service → hold / absent / complete / skip / cancel / transfer) · priority and an emergency pathway for clinical staff · configurable routing rules |
+| Real time | Transactional outbox → Socket.IO. Staff sockets must authenticate and are authorised per department. A separate public `/display` namespace carries no personal data. |
+| Records | Patient / visit / ticket are separate. Duplicate warning at registration, idempotent visit creation, patient journey (full timeline for clinical roles, summary for others), invoices and confirmed payments |
+| Reporting | Live dashboard, report filters by date and department, CSV export (audited), documented metric definitions (`server/src/services/reports.service.ts`) |
+| Docs | OpenAPI at `/api/docs` (development; off by default in production), this README, [`docs/`](docs) |
 
-## Sign-in and accounts
+## Roles
 
-- On first start the server creates an admin account. Set `ADMIN_USERNAME` /
-  `ADMIN_PASSWORD` to choose it; otherwise a random password is printed once in
-  the server log. Change it after signing in (**Change password** in the top bar).
-- Admins add staff accounts on the Setup page, with role *Staff / Healthcare
-  Provider* or *Administrator*.
-- Choosing **Admin** on the login page only works for administrator accounts.
-  Administrators can also sign in as **User** to go straight to the counter.
-- Passwords are hashed with scrypt; sessions are httpOnly cookies. **Remember me**
-  keeps you signed in for 30 days, otherwise until the browser closes (max 12 hours).
-- Sign-in is limited to 10 failed attempts per 15 minutes per IP address.
+`SYSTEM_ADMIN` (configuration and oversight, cannot operate queues), `RECEPTION`, `TRIAGE`, `CONSULTATION`, `LABORATORY`, `RADIOLOGY`, `PHARMACY`, `ACCOUNTS`. Permissions are listed in `server/src/domain/constants.ts` and stored in the database; staff are assigned to departments and can only act inside them.
 
-## SMS notifications
+## Quick start (development)
 
-Uses [Africa's Talking](https://africastalking.com). Customers who leave a phone
-number get a text when they take a ticket, when they are within `NOTIFY_AHEAD`
-places of the front, and when they are called to a counter. Local numbers like
-`0712 345 678` are converted to `+254712345678` (change `SMS_COUNTRY_CODE` for
-other countries).
-
-Without `AT_USERNAME` / `AT_API_KEY` set, messages are printed to the server log
-instead, so everything works without an SMS account. Use `AT_USERNAME=sandbox`
-with a sandbox key to test.
-
-## Tech
-
-- **server/** Node.js, Express, Socket.IO, SQLite (better-sqlite3)
-- **client/** React 18, Vite, React Router
-
-## Run locally
-
-Requires Node.js 20+.
+Requirements: Node 20+ (22 recommended), MySQL 8 (or MariaDB 10.6+) and an empty database with a user that can create tables.
 
 ```bash
-npm run install:all
-cp server/.env.example server/.env   # optional, edit as needed
+npm install
+cp server/.env.example server/.env        # set DATABASE_URL (use a URL-safe password)
+npm run db:migrate                        # applies server/prisma/migrations
+npm run db:seed                           # roles, permissions, 7 departments, counters, routing rules, settings
+npm run create-admin -- --username admin --name "Your Name"   # prompts for a password (hidden)
 
-# two terminals
-npm run dev:server    # API on http://localhost:4000
-npm run dev:client    # UI on http://localhost:5173
+npm run dev:server                        # API + Socket.IO on :4000
+npm run dev:client                        # web app on :5173 (proxies /api and /socket.io)
 ```
 
-The database is created at `server/data/queuems.db` and seeded with three
-services (General Enquiries `A`, Payments `B`, Customer Care `C`) and three counters.
+Optional synthetic demo staff (one per department, development only): set `SEED_DEMO_USERS=1` and `DEMO_PASSWORD=<10+ chars>` before `npm run db:seed`. Accounts are named `reception`, `triage`, `consultation`, `laboratory`, `radiology`, `pharmacy`, `accounts`. Demo users are refused when `NODE_ENV=production`.
 
-## Production / deploy
+No password is stored in the repository. `.env.example` files contain placeholders only.
+
+## Tests
 
 ```bash
-npm run build   # installs everything and builds the React app
-npm start       # serves API + UI on $PORT
+npm test                  # server (Vitest + Supertest, real database) and client (Vitest + Testing Library)
+npm run test:e2e          # Playwright against the real server and a disposable database
 ```
 
-On Railway (or any Node host): build command `npm run build`, start command
-`npm start`. Attach a volume and set `DATABASE_PATH` to a file on it (e.g.
-`/data/queuems.db`) so tickets survive redeploys.
+* Server tests recreate a disposable database (default `hqms_test`, override with `TEST_DATABASE_URL`; the name must contain "test") from the committed migration SQL. They cover authentication, RBAC, patient/visit/ticket flows, state transitions, concurrency (25 simultaneous registrations, 8 simultaneous call-next, double submit), billing, notifications, sockets, the public display's lack of personal data, reports and CSV export.
+* E2E uses `hqms_e2e` (override with `E2E_DATABASE_URL`; the name must contain "e2e" or "test") and synthetic users. If Playwright cannot find its browser, set `PW_CHROMIUM_PATH` to a Chromium binary.
+* The database account needs permission to create/drop those databases.
 
-## Environment variables
+## Build and run in production
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `PORT` | `4000` | HTTP port |
-| `DATABASE_PATH` | `server/data/queuems.db` | SQLite file |
-| `ORG_NAME` | `QueueMS` | Name shown in SMS messages |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | `admin`, random | First admin account |
-| `NODE_ENV` | – | Set to `production` so session cookies are HTTPS-only |
-| `AT_USERNAME`, `AT_API_KEY` | – | Africa's Talking credentials |
-| `AT_SENDER_ID` | – | Optional registered sender ID |
-| `SMS_COUNTRY_CODE` | `254` | Used to convert local numbers |
-| `NOTIFY_AHEAD` | `3` | Send the "turn is near" text at this many people ahead |
+```bash
+npm run build           # client (Vite) and server (prisma generate + tsc)
+NODE_ENV=production npm start
+```
 
-## API
+The server serves the built web app, the API and Socket.IO from one port. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Docker, HTTPS, backups and upgrades, and [docs/OPERATIONS.md](docs/OPERATIONS.md) for day-to-day use including the waiting-room TV.
 
-| Method | Path | Body |
-|--------|------|------|
-| POST | `/api/auth/login` | `{ username, password, role, rememberMe }` |
-| POST | `/api/auth/logout` · GET `/api/auth/me` | – |
-| POST | `/api/auth/password` | `{ currentPassword, newPassword }` |
-| GET/POST | `/api/users` (admin) | `{ username, full_name, password, role }` |
-| GET | `/api/queue` | – full live snapshot |
-| GET/POST | `/api/services` (POST: admin) | `{ name, prefix }` |
-| GET/POST | `/api/counters` (POST: admin) | `{ name }` |
-| POST | `/api/tickets` | `{ serviceId, phone? }` |
-| GET | `/api/tickets/:id` · `/api/tickets/lookup?code=A007` | – |
-| POST | `/api/counters/:id/call-next` (staff) | `{ serviceIds? }` |
-| POST | `/api/tickets/:id/recall` \| `serve` \| `skip` \| `complete` (staff) | – |
+### Docker
 
-Ticket numbers restart at 001 for each service every day.
+```bash
+cp .env.example .env     # replace every CHANGE_ME
+docker compose up -d --build
+docker compose run --rm app node dist/cli/create-admin.js --username admin --name "Your Name"
+```
 
-## Next ideas
+MySQL is only on a private Docker network; port 3306 is **not** published.
 
-- QR code sign-in (button is on the login page, not connected yet)
-- Admin password reset for staff accounts
-- Reports: average wait and service time per service and counter
-- Printed tickets with a QR code linking to `/ticket/:id`
-- Priority tickets (elderly, disabled, VIP)
+## Security and privacy
+
+See [docs/SECURITY.md](docs/SECURITY.md) for the controls, the threat assumptions, and notes for Kenyan data-protection obligations. This software has **not** been reviewed or certified against any law or standard; whether a deployment meets legal requirements is for your organisation's legal and compliance advisers to decide.
+
+## Known limitations (read before relying on it)
+
+* **Migrations were generated, not produced by Prisma Migrate.** The build environment could not download Prisma's engine binaries, so `server/prisma/migrations/*/migration.sql` was generated by a script from `schema.prisma` and applied to MariaDB. Before first production use run `npx prisma migrate diff --from-migrations server/prisma/migrations --to-schema-datamodel server/prisma/schema.prisma --shadow-database-url <empty db>` on a machine with normal network access; it should report no differences. Report/fix any drift.
+* **Tests ran on MariaDB 10.11**, not MySQL 8.4. The SQL is standard (InnoDB row locks, `FOR UPDATE SKIP LOCKED`, JSON stored as text) and the Docker setup uses MySQL 8.4, but that combination has not been exercised here.
+* **The Docker and Compose files were written but not run** (no Docker daemon was available). Run `docker compose config` and a trial deployment before relying on them.
+* Prisma runs with the Rust-free client and the MariaDB driver adapter (`engineType = "client"`). Set `PRISMA_JS_ENGINE=1` only if your network cannot reach `binaries.prisma.sh` (see `server/prisma.config.ts`).
+* SMS or e-mail delivery to patients is not implemented. Notifications are in-app and persistent; the outbox is ready for a delivery worker.
+* Real-time delivery is at-most-once per event; clients refetch on reconnect and poll while disconnected, so screens self-heal. One application instance is assumed for the outbox dispatcher (multiple instances are safe but may split events).
+* Voice announcements use the browser's speech engine. Available voices and languages depend on the TV or computer; test on the actual device.
