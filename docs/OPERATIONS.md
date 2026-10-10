@@ -53,3 +53,7 @@ Reports → choose dates (up to 93 days) and department. Cancelled visits are ex
 ## Retention
 
 Nothing is deleted automatically. Decide, with your data-protection adviser, how long patient, visit and audit records are kept, and how backups are expired.
+
+## If the database is restarted
+
+The server checks the database every 15 seconds. If four checks in a row fail, it exits and the hosting platform starts a fresh process, which opens fresh database connections. This covers a failure seen on Railway: after the MySQL service was redeployed, the app's connection pool stayed empty and every login returned an error until the app was restarted. Tune with `DB_WATCHDOG_INTERVAL_MS` and `DB_WATCHDOG_FAILURES` (0 turns it off). Your platform must restart a process that exits (Docker `restart: unless-stopped`, Railway's default restart policy).

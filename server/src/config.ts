@@ -29,6 +29,9 @@ const schema = z.object({
 
   // Interactive API documentation at /api/docs. Off by default in production.
   API_DOCS: z.preprocess((v) => (v === undefined || v === '' ? undefined : ['1', 'true', 'yes'].includes(String(v).toLowerCase())), z.boolean().optional()),
+  DB_WATCHDOG_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  /** Consecutive failed database pings before the process exits so it can be restarted. 0 turns the watchdog off. */
+  DB_WATCHDOG_FAILURES: z.coerce.number().int().min(0).default(4),
   OUTBOX_POLL_MS: z.coerce.number().int().positive().default(400),
 });
 
