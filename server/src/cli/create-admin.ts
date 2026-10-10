@@ -1,9 +1,11 @@
 /**
  * Creates (or promotes) the first System Administrator.
  *
- *   npm run create-admin -- --username admin --name "Jane Admin" [--email jane@hospital.org] [--if-missing]
+ *   npm run create-admin -- --username admin --name "Jane Admin" [--email jane@hospital.org] [--if-missing | --reset-password]
  *
  * With --if-missing, an existing user is left unchanged and the command succeeds, so it is safe in a start script that runs on every deploy.
+ * With --reset-password, an existing user's password is set to ADMIN_PASSWORD and any lockout is cleared. Use it to recover access, or in a
+ * disposable test deployment where the environment variable is meant to be the source of truth. Do not use it in a start script for real data.
  *
  * The password is read from the ADMIN_PASSWORD environment variable if set, otherwise
  * from an interactive prompt (input hidden). It is never taken from a command-line
@@ -12,6 +14,7 @@
 import readline from 'node:readline';
 import { prisma } from '../db.js';
 import { seedReferenceData } from '../services/bootstrap.service.js';
+import { hashPassword, assertStrongPassword } from '../services/password.js';
 import { createUser } from '../services/users.service.js';
 
 function arg(name: string): string | undefined {
@@ -48,6 +51,13 @@ async function main() {
   }
 
   const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing && process.argv.includes('--reset-password')) {
+    assertStrongPassword(password);
+    await prisma.user.update({ where: { id: existing.id }, data: { passwordHash: await hashPassword(password), failedLogins: 0, lockedUntil: null, isActive: true, mustChangePassword: false } });
+    await prisma.session.deleteMany({ where: { userId: existing.id } });
+    console.log(`Password reset for "${username}"; lockout cleared and existing sessions ended.`);
+    return;
+  }
   if (existing && process.argv.includes('--if-missing')) {
     console.log(`User "${username}" already exists; left unchanged.`);
     return;

@@ -1,7 +1,7 @@
 # Single-image deployment for platforms such as Railway (one app container + a managed MySQL).
 # Base image comes from the AWS public mirror of the official Node image so builds do not depend on Docker Hub rate limits.
 # Override with --build-arg NODE_IMAGE=node:22-bookworm-slim to use Docker Hub.
-# On every start it applies migrations, seeds reference data, optionally seeds synthetic test users, then runs the server.
+# On every start it applies migrations, seeds reference data, optionally seeds synthetic test users, resets the test admin password to ADMIN_PASSWORD (disposable test deployments only), then runs the server.
 ARG NODE_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim
 FROM ${NODE_IMAGE}
 WORKDIR /app
@@ -15,4 +15,4 @@ RUN npm run build -w client && npm run build -w server
 WORKDIR /app/server
 ENV NODE_ENV=production
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy && NODE_ENV=development npx tsx prisma/seed.ts && ( [ -z \"$ADMIN_PASSWORD\" ] || node dist/cli/create-admin.js --username admin --name 'Test Administrator' --if-missing ) && exec node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && NODE_ENV=development npx tsx prisma/seed.ts && ( [ -z \"$ADMIN_PASSWORD\" ] || node dist/cli/create-admin.js --username admin --name 'Test Administrator' --reset-password ) && exec node dist/index.js"]
