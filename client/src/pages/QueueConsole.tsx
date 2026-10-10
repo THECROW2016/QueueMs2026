@@ -234,7 +234,7 @@ export default function QueueConsole() {
       </div>
 
       {dialog?.kind === 'register' && (
-        <RegisterVisit onClose={() => setDialog(null)} onDone={(r) => { setDialog(null); void queue.reload(); nav(`/tickets/${r.ticketId}/slip`); }} />
+        <RegisterVisit onClose={() => setDialog(null)} onDone={(r) => { setDialog(null); void queue.reload(); nav(`/tickets/${r.ticketId}/slip`, { state: { issued: true } }); }} />
       )}
       {dialog?.kind === 'reason' && reasonConfig && reasonConfig.title && (
         <ReasonModal

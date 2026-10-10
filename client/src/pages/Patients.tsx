@@ -86,7 +86,7 @@ export default function Patients() {
         </Modal>
       )}
       {newVisitFor && (
-        <RegisterVisit existing={newVisitFor === 'new' ? undefined : newVisitFor} onClose={() => setNewVisitFor(null)} onDone={(r) => { setNewVisitFor(null); nav(`/tickets/${r.ticketId}/slip`); }} />
+        <RegisterVisit existing={newVisitFor === 'new' ? undefined : newVisitFor} onClose={() => setNewVisitFor(null)} onDone={(r) => { setNewVisitFor(null); nav(`/tickets/${r.ticketId}/slip`, { state: { issued: true } }); }} />
       )}
     </div>
   );

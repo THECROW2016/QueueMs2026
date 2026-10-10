@@ -12,6 +12,22 @@
 
 *Register patient* checks for a probable duplicate before saving; choose the existing record when it is the same person. Submitting twice (double click, bad network) cannot create two visits. The ticket slip contains only the ticket number, department, people ahead and the hospital's message. Pick *My counter*, then **Call next patient**.
 
+### Printing tickets and printer settings
+
+After registering a visit, reception lands on the ticket page and presses **Print ticket**. Reprint any waiting ticket with **Slip** on the Reception queue.
+
+Printer settings are **per computer** (stored in that browser, not on the server), because each desk has its own printer. Open them from **Printer settings** on the ticket page, or from **My account → Ticket printer**, where **Print test ticket** prints a sample with no patient data.
+
+| Setting | Options |
+|---|---|
+| Paper | 58 mm roll, 80 mm roll, A6, A4 |
+| Text size | Normal, Large |
+| Copies per ticket | 1 to 3, one per page so a thermal cutter separates them |
+| On the ticket | Date and time, people ahead, waiting-room instructions |
+| Auto-print | Opens the print dialog right after a visit is registered |
+
+The printer itself is chosen in the browser's print dialog, or set as the computer's default printer. A web page cannot silently pick a printer or print without the dialog. For one-click printing at a dedicated reception PC, start Chrome or Edge with `--kiosk-printing`; it then sends tickets straight to the default printer. In the dialog, set margins to *None* and turn off headers and footers if the browser shows them. Roll paper uses a fixed ticket length (58 mm × 95 mm, 80 mm × 110 mm), so set the printer driver's paper to match.
+
 ## Clinical and support departments
 
 Choose your room, call the next patient, **Start service**, then **Complete…** and pick where the patient goes next (one or several departments; the choices come from the routing rules). Other actions: Recall, Hold/Resume, Absent/Restore (restore is allowed for a limited time), Skip, Cancel, Transfer (reasons are required and logged). Triage and Consultation can change priority and use the emergency pathway. Laboratory and Radiology set a result/report status; the department that requested it is notified when it becomes available.
