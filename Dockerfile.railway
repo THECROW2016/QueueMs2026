@@ -15,4 +15,4 @@ RUN npm run build -w client && npm run build -w server
 WORKDIR /app/server
 ENV NODE_ENV=production
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy && NODE_ENV=development npx tsx prisma/seed.ts && ( [ -z \"$ADMIN_PASSWORD\" ] || node dist/cli/create-admin.js --username admin --name 'Test Administrator' ) && exec node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && NODE_ENV=development npx tsx prisma/seed.ts && ( [ -z \"$ADMIN_PASSWORD\" ] || node dist/cli/create-admin.js --username admin --name 'Test Administrator' --if-missing ) && exec node dist/index.js"]

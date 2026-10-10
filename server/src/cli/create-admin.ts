@@ -1,7 +1,9 @@
 /**
  * Creates (or promotes) the first System Administrator.
  *
- *   npm run create-admin -- --username admin --name "Jane Admin" [--email jane@hospital.org]
+ *   npm run create-admin -- --username admin --name "Jane Admin" [--email jane@hospital.org] [--if-missing]
+ *
+ * With --if-missing, an existing user is left unchanged and the command succeeds, so it is safe in a start script that runs on every deploy.
  *
  * The password is read from the ADMIN_PASSWORD environment variable if set, otherwise
  * from an interactive prompt (input hidden). It is never taken from a command-line
@@ -46,6 +48,10 @@ async function main() {
   }
 
   const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing && process.argv.includes('--if-missing')) {
+    console.log(`User "${username}" already exists; left unchanged.`);
+    return;
+  }
   if (existing) throw new Error(`User "${username}" already exists. Use the admin UI to change roles or reset the password.`);
 
   const user = await createUser({ username, fullName, email, password, roleCodes: ['SYSTEM_ADMIN'], mustChangePassword: false });
